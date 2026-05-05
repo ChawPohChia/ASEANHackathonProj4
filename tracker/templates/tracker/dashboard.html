@@ -1,0 +1,131 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Dashboard — Weather Sentiment{% endblock %}
+
+{% block body %}
+<header class="site">
+  <div class="brand">
+    <h1>Weather sentiment dashboard</h1>
+    <p>Singapore-focused X posts: hourly ingestion, ChatGPT scoring (0–9), local SQLite storage.</p>
+    <nav class="tabs" aria-label="Primary">
+      <a href="{% url 'dashboard' %}" class="active">Dashboard</a>
+      <a href="/admin/">Admin</a>
+    </nav>
+  </div>
+  <div class="meta">
+    {% if last_updated %}
+      <div>Last classified <strong>{{ last_updated|date:"Y-m-d H:i T" }}</strong></div>
+    {% else %}
+      <div><strong>No classifications yet</strong></div>
+    {% endif %}
+  </div>
+</header>
+
+{% if day_total == 0 and hour_total == 0 %}
+  <div class="empty">
+    <p><strong>No sentiment data in the last 24 hours.</strong></p>
+    <p>Run ingestion (API keys required): <code style="color:#e8edf7">python manage.py run_ingestion</code></p>
+    <p>For hourly automation, start a cluster and register the schedule — see README.</p>
+  </div>
+{% else %}
+  <div class="grid cols-2">
+    <section class="card" aria-labelledby="h-hour">
+      <h2 id="h-hour">Last 1 hour</h2>
+      <p class="caption">{{ hour_caption }}</p>
+      {% if hour_total == 0 %}
+        <div class="empty" style="box-shadow:none">No posts classified in the last hour.</div>
+      {% else %}
+        <div class="chart-wrap"><canvas id="chartHour" aria-label="Hour sentiment bar chart"></canvas></div>
+      {% endif %}
+    </section>
+    <section class="card" aria-labelledby="h-day">
+      <h2 id="h-day">Last 24 hours</h2>
+      <p class="caption">{{ day_caption }}</p>
+      {% if day_total == 0 %}
+        <div class="empty" style="box-shadow:none">No posts classified in the last 24 hours.</div>
+      {% else %}
+        <div class="chart-wrap"><canvas id="chartDay" aria-label="Day sentiment bar chart"></canvas></div>
+      {% endif %}
+    </section>
+  </div>
+{% endif %}
+
+<script>
+  const labels = {{ score_labels_json|safe }};
+  const hourData = {{ hour_counts_json|safe }};
+  const dayData = {{ day_counts_json|safe }};
+
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label(ctx) {
+            const n = ctx.parsed.y;
+            return n === 1 ? "1 post" : `${n} posts`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: "Sentiment score", color: "#8b9bb8" },
+        ticks: { color: "#8b9bb8" },
+        grid: { color: "rgba(36, 48, 73, 0.6)" }
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: "Count", color: "#8b9bb8" },
+        ticks: { precision: 0, color: "#8b9bb8" },
+        grid: { color: "rgba(36, 48, 73, 0.6)" }
+      }
+    }
+  };
+
+  function barColors(counts) {
+    const max = Math.max(1, ...counts);
+    return counts.map((c) => {
+      const t = c / max;
+      const r = Math.round(59 + (248 - 59) * (1 - t));
+      const g = Math.round(130 + (113 - 130) * (1 - t));
+      const b = Math.round(246 + (104 - 246) * (1 - t));
+      return `rgba(${r}, ${g}, ${b}, 0.85)`;
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (window.Chart && document.getElementById("chartHour")) {
+      new Chart(document.getElementById("chartHour"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Posts",
+            data: hourData,
+            borderWidth: 0,
+            backgroundColor: barColors(hourData)
+          }]
+        },
+        options: commonOptions
+      });
+    }
+    if (window.Chart && document.getElementById("chartDay")) {
+      new Chart(document.getElementById("chartDay"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Posts",
+            data: dayData,
+            borderWidth: 0,
+            backgroundColor: barColors(dayData)
+          }]
+        },
+        options: commonOptions
+      });
+    }
+  });
+</script>
+{% endblock %}
